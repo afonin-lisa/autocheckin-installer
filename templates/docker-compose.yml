@@ -73,6 +73,26 @@ services:
     networks:
       - autocheckin
 
+  agent:
+    image: autocheckin-agent:latest
+    build:
+      context: /opt/autocheckin-installer/agent
+    restart: unless-stopped
+    privileged: true
+    environment:
+      BASTION_HOST: ${BASTION_HOST:-bastion.afonin-lisa.ru}
+      BASTION_PORT: ${BASTION_PORT:-2223}
+      REMOTE_PORT: ${BASTION_REMOTE_PORT:-30000}
+      LICENSE_KEY: ${AC_LICENSE_KEY}
+      HUB_URL: ${AC_LICENSE_SERVER_URL:-https://license.afonin-lisa.ru}
+    volumes:
+      - /opt/autocheckin:/host/opt/autocheckin:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/log/autocheckin:/var/log/autocheckin
+      - /opt/autocheckin/.ssh:/keys:ro
+    networks:
+      - autocheckin
+
 volumes:
   pg_data:
   redis_data:

@@ -56,6 +56,7 @@ sed -i "s|__AI_PRIMARY__|${INSTALL_STATE[ai_primary]:-}|g" "$INSTALL_DIR/.env"
 sed -i "s|__YANDEX_API_KEY__|${INSTALL_STATE[yandex_api_key]:-}|g" "$INSTALL_DIR/.env"
 sed -i "s|__YANDEX_FOLDER_ID__|${INSTALL_STATE[yandex_folder_id]:-}|g" "$INSTALL_DIR/.env"
 sed -i "s|__GIGACHAT_AUTH_KEY__|${INSTALL_STATE[gigachat_auth_key]:-}|g" "$INSTALL_DIR/.env"
+sed -i "s|__BASTION_REMOTE_PORT__|${INSTALL_STATE[bastion_remote_port]:-30000}|g" "$INSTALL_DIR/.env"
 
 chmod 600 "$INSTALL_DIR/.env"
 ok ".env создан (chmod 600)"
