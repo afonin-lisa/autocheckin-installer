@@ -36,6 +36,12 @@ CRON_LINE="0 3 * * * /opt/autocheckin/backup.sh >> /var/log/autocheckin/backup.l
 (crontab -l 2>/dev/null | grep -v "autocheckin/backup.sh"; echo "$CRON_LINE") | crontab -
 ok "Cron: ежедневно в 03:00"
 
+# Auto-update cron (daily at 04:00)
+info "Настраиваю автообновление..."
+UPDATE_CRON="0 4 * * * /opt/autocheckin-installer/update-cron.sh"
+(crontab -l 2>/dev/null | grep -v "update-cron.sh"; echo "$UPDATE_CRON") | crontab -
+ok "Auto-update: ежедневно в 04:00"
+
 # Test backup
 info "Тестовый бэкап..."
 if "$INSTALL_DIR/backup.sh" >> /var/log/autocheckin/backup.log 2>&1; then
