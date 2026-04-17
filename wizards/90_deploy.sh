@@ -8,8 +8,10 @@ cd "$INSTALL_DIR"
 info "Генерирую секреты..."
 SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 DB_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(24))")
+GUEST_DATA_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || python3 -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())")
 save_state "secret_key" "$SECRET_KEY"
 save_state "db_password" "$DB_PASSWORD"
+save_state "guest_data_key" "$GUEST_DATA_KEY"
 ok "Секреты сгенерированы"
 
 # 2. Fill .env from template
@@ -19,6 +21,7 @@ cp "$INSTALLER_DIR/templates/.env.template" "$INSTALL_DIR/.env"
 # Core
 sed -i "s|__DB_PASSWORD__|${DB_PASSWORD}|g" "$INSTALL_DIR/.env"
 sed -i "s|__SECRET_KEY__|${SECRET_KEY}|g" "$INSTALL_DIR/.env"
+sed -i "s|__GUEST_DATA_KEY__|${GUEST_DATA_KEY}|g" "$INSTALL_DIR/.env"
 sed -i "s|__LICENSE_KEY__|${INSTALL_STATE[license_key]:-}|g" "$INSTALL_DIR/.env"
 sed -i "s|__DOMAIN__|${INSTALL_STATE[domain]:-localhost}|g" "$INSTALL_DIR/.env"
 sed -i "s|__MODULES__|${INSTALL_STATE[modules]:-guest,cleaning,admin_web}|g" "$INSTALL_DIR/.env"
