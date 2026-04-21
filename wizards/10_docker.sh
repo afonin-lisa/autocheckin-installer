@@ -25,18 +25,29 @@ else
         info "Docker не найден, устанавливаю..."
     fi
 
-    info "Обновление пакетов и установка docker.io docker-compose-plugin..."
+    info "Обновление пакетов и установка docker.io..."
     apt-get update -qq || fail "Не удалось выполнить apt-get update"
-    apt-get install -y docker.io docker-compose-plugin > /dev/null 2>&1 \
+    apt-get install -y docker.io > /dev/null 2>&1 \
         || fail "Не удалось установить Docker"
 
     ok "Docker установлен"
 fi
 
-# --- Verify docker compose ---
+# --- Verify docker compose (install manually if missing) ---
 info "Проверка docker compose..."
 if ! docker compose version &>/dev/null; then
-    fail "docker compose недоступен после установки. Проверьте пакет docker-compose-plugin"
+    info "docker-compose-plugin не найден, устанавливаю вручную..."
+    COMPOSE_VERSION="v2.32.4"
+    mkdir -p /usr/local/lib/docker/cli-plugins
+    curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-$(uname -m)" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose 2>/dev/null \
+        || curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+fi
+
+if ! docker compose version &>/dev/null; then
+    fail "docker compose недоступен. Установите вручную: https://docs.docker.com/compose/install/"
 fi
 COMPOSE_VER=$(docker compose version --short 2>/dev/null || docker compose version | grep -oP '\d+\.\d+\.\d+' | head -1)
 ok "docker compose: $COMPOSE_VER"
