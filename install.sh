@@ -14,7 +14,7 @@ INSTALLER_DIR="/opt/autocheckin-installer"
 STATE_FILE="$INSTALL_DIR/.install-state"
 HUB_URL="https://install.afonin-lisa.ru"
 
-# Self-bootstrap: download full installer if running from curl pipe
+# Self-bootstrap: download full installer and re-exec with real terminal
 if [ ! -f "$INSTALLER_DIR/lib/colors.sh" ]; then
     echo "Скачиваю установщик..."
     apt-get update -qq && apt-get install -y -qq git curl > /dev/null 2>&1 || true
@@ -23,6 +23,12 @@ if [ ! -f "$INSTALLER_DIR/lib/colors.sh" ]; then
     else
         git clone https://github.com/afonin-lisa/autocheckin-installer.git "$INSTALLER_DIR" 2>/dev/null || true
     fi
+fi
+
+# If running from pipe (stdin is not a terminal), re-exec with terminal
+if [ ! -t 0 ]; then
+    echo "Установщик скачан. Запускаю интерактивный режим..."
+    exec bash "$INSTALLER_DIR/install.sh" "$@" < /dev/tty
 fi
 
 # Source libraries
