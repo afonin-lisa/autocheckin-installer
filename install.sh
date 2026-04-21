@@ -28,22 +28,22 @@ header() { echo -e "\n${BOLD}${CYAN}═══ $1 ═══${NC}\n"; }
 ask() {
     local prompt="$1" default="${2:-}"
     if [ -n "$default" ]; then
-        echo -en "${CYAN}▸ ${prompt} [${default}]: ${NC}"
+        echo -en "${CYAN}▸ ${prompt} [${default}]: ${NC}" >&2
     else
-        echo -en "${CYAN}▸ ${prompt}: ${NC}"
+        echo -en "${CYAN}▸ ${prompt}: ${NC}" >&2
     fi
     read -r REPLY
     echo "${REPLY:-$default}"
 }
 
 ask_secret() {
-    echo -en "${CYAN}▸ $1: ${NC}"
-    read -rs REPLY; echo
+    echo -en "${CYAN}▸ $1: ${NC}" >&2
+    read -rs REPLY; echo >&2
     echo "$REPLY"
 }
 
 confirm() {
-    echo -en "${CYAN}▸ $1 [y/N]: ${NC}"
+    echo -en "${CYAN}▸ $1 [y/N]: ${NC}" >&2
     read -r REPLY
     [[ "$REPLY" =~ ^[Yy]$ ]]
 }
