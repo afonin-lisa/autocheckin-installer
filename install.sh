@@ -416,7 +416,7 @@ else
     else
         fail "Образ не найден. Обратитесь в поддержку: @autocheckin_support"
     fi
-}
+fi
 
 info "Загружаю образы..."
 cd "$INSTALL_DIR"
