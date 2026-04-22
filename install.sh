@@ -372,24 +372,23 @@ ${DOMAIN} {
 CADDYFILE
 ok "Caddyfile создан для $DOMAIN"
 
-# ═══ Docker login + pull ═══
+# ═══ Pull image from registry (no auth needed for pull) ═══
 header "Загрузка AutoCheckin"
 REGISTRY="registry.afonin-lisa.ru"
-info "Подключаюсь к Docker Registry..."
-echo "${CFG[license_key]}" | docker login "$REGISTRY" -u license --password-stdin 2>/dev/null && {
-    ok "Registry: $REGISTRY"
-    # Update compose to use registry image
-    sed -i "s|image: autocheckin-app:latest|image: ${REGISTRY}/autocheckin:latest|g" "$INSTALL_DIR/docker-compose.yml" 2>/dev/null || true
-} || {
-    warn "Registry недоступен — используем локальную сборку"
-    # Check if image exists locally
-    if ! docker images | grep -q "autocheckin"; then
-        warn "Образ не найден. Сборка из исходников..."
-        if [ -f "$INSTALL_DIR/Dockerfile" ]; then
-            cd "$INSTALL_DIR" && docker build -t autocheckin-app:latest . 2>&1 | tail -3
-        else
-            fail "Нет ни образа, ни исходников для сборки"
-        fi
+info "Скачиваю образ из $REGISTRY..."
+
+# Update compose to use registry image
+sed -i "s|image: autocheckin-app:latest|image: ${REGISTRY}/autocheckin:latest|g" "$INSTALL_DIR/docker-compose.yml" 2>/dev/null || true
+sed -i "s|image: \${REGISTRY}/autocheckin|image: ${REGISTRY}/autocheckin|g" "$INSTALL_DIR/docker-compose.yml" 2>/dev/null || true
+
+if docker pull "${REGISTRY}/autocheckin:latest" 2>/dev/null; then
+    ok "Образ загружен из $REGISTRY"
+else
+    warn "Не удалось скачать образ из registry"
+    if docker images | grep -q "autocheckin"; then
+        ok "Используем локальный образ"
+    else
+        fail "Образ не найден. Обратитесь в поддержку: @autocheckin_support"
     fi
 }
 
