@@ -57,7 +57,7 @@ if [ ! -f "$INSTALLER_DIR/templates/docker-compose.yml" ]; then
     echo "Скачиваю установщик..."
     apt-get update -qq && apt-get install -y -qq git curl > /dev/null 2>&1 || true
     if [ -d "$INSTALLER_DIR/.git" ]; then
-        cd "$INSTALLER_DIR" && git pull --ff-only 2>/dev/null || true
+        cd "$INSTALLER_DIR" && git fetch origin 2>/dev/null && git reset --hard origin/master 2>/dev/null || true
     else
         git clone https://github.com/afonin-lisa/autocheckin-installer.git "$INSTALLER_DIR" 2>/dev/null || true
     fi
@@ -305,15 +305,15 @@ header "Проверка сетевых портов"
 PUBLIC_IP="${CFG[public_ip]:-$(curl -sf --connect-timeout 5 https://ifconfig.me 2>/dev/null)}"
 info "Проверяю доступность портов 80/443 извне для $PUBLIC_IP..."
 
-PORTS_JSON=$(curl -sf --connect-timeout 10 "https://portchecker.io/api/v1/query" -X POST \
+PORTS_JSON=$(curl -sf --connect-timeout 10 "https://install.afonin-lisa.ru/v1/check-ports" -X POST \
     -H "Content-Type: application/json" \
     -d "{\"host\":\"${PUBLIC_IP}\",\"ports\":[80,443]}" 2>/dev/null || echo "")
 
 PORT80_OK=false
 PORT443_OK=false
 if [ -n "$PORTS_JSON" ]; then
-    PORT80_OK=$(echo "$PORTS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if any(c['port']==80 and c['status'] for c in d.get('check',[])) else 'false')" 2>/dev/null || echo "false")
-    PORT443_OK=$(echo "$PORTS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if any(c['port']==443 and c['status'] for c in d.get('check',[])) else 'false')" 2>/dev/null || echo "false")
+    PORT80_OK=$(echo "$PORTS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('results',{}).get('80') or d.get('results',{}).get(80) else 'false')" 2>/dev/null || echo "false")
+    PORT443_OK=$(echo "$PORTS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('results',{}).get('443') or d.get('results',{}).get(443) else 'false')" 2>/dev/null || echo "false")
 fi
 
 if [ "$PORT80_OK" = "true" ] && [ "$PORT443_OK" = "true" ]; then
@@ -343,11 +343,11 @@ else
 
     if confirm "Порты открыты? Проверить ещё раз?"; then
         # Re-check
-        PORTS_JSON2=$(curl -sf --connect-timeout 10 "https://portchecker.io/api/v1/query" -X POST \
+        PORTS_JSON2=$(curl -sf --connect-timeout 10 "https://install.afonin-lisa.ru/v1/check-ports" -X POST \
             -H "Content-Type: application/json" \
             -d "{\"host\":\"${PUBLIC_IP}\",\"ports\":[80,443]}" 2>/dev/null || echo "")
-        P80=$(echo "$PORTS_JSON2" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if any(c['port']==80 and c['status'] for c in d.get('check',[])) else 'false')" 2>/dev/null || echo "false")
-        P443=$(echo "$PORTS_JSON2" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if any(c['port']==443 and c['status'] for c in d.get('check',[])) else 'false')" 2>/dev/null || echo "false")
+        P80=$(echo "$PORTS_JSON2" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('results',{}).get('80') or d.get('results',{}).get(80) else 'false')" 2>/dev/null || echo "false")
+        P443=$(echo "$PORTS_JSON2" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('results',{}).get('443') or d.get('results',{}).get(443) else 'false')" 2>/dev/null || echo "false")
         if [ "$P80" = "true" ] && [ "$P443" = "true" ]; then
             ok "Порты открыты!"
         else
