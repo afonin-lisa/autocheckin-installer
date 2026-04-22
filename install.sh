@@ -133,11 +133,37 @@ header "Шаг 2/8: Домен"
 if [ -z "${CFG[domain]:-}" ]; then
     PUBLIC_IP=$(curl -sf --connect-timeout 5 https://ifconfig.me 2>/dev/null || echo "")
     [ -n "$PUBLIC_IP" ] && info "IP этого сервера: $PUBLIC_IP"
-    echo -e "  Создайте DNS A-запись: ${BOLD}ваш-домен → $PUBLIC_IP${NC}"
-    DOMAIN=$(ask "Домен (например checkin.myhotel.ru)")
-    if [ -z "$DOMAIN" ]; then
-        warn "Домен не указан — будет работать только по IP"
-        DOMAIN="$PUBLIC_IP"
+    echo ""
+    echo -e "  ${BOLD}Выберите вариант:${NC}"
+    echo -e "  ${GREEN}1)${NC} Свой домен (бесплатно) — вы сами настраиваете DNS"
+    echo -e "  ${GREEN}2)${NC} Наш поддомен *.autocheckin.afonin-lisa.ru (+100₽/мес)"
+    echo ""
+    DOMAIN_CHOICE=$(ask "Выбор (1 или 2)" "2")
+
+    if [ "$DOMAIN_CHOICE" = "1" ]; then
+        echo -e "  Создайте DNS A-запись: ${BOLD}ваш-домен → $PUBLIC_IP${NC}"
+        DOMAIN=$(ask "Ваш домен (например checkin.myhotel.ru)")
+        if [ -z "$DOMAIN" ]; then
+            warn "Домен не указан — будет работать только по IP"
+            DOMAIN="$PUBLIC_IP"
+        fi
+    else
+        SUBDOMAIN=$(ask "Придумайте имя (латиницей, 3-30 символов)")
+        if [ -z "$SUBDOMAIN" ]; then
+            fail "Имя обязательно"
+        fi
+        info "Создаю ${SUBDOMAIN}.autocheckin.afonin-lisa.ru → $PUBLIC_IP..."
+        # Call hub API to create subdomain
+        CREATE_RESULT=$(curl -sf -X POST "https://install.afonin-lisa.ru/v1/domain/create" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"${SUBDOMAIN}\",\"ip\":\"${PUBLIC_IP}\",\"license_key\":\"${CFG[license_key]:-}\"}" 2>/dev/null)
+        DOMAIN_ERROR=$(echo "$CREATE_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',''))" 2>/dev/null)
+        if [ -n "$DOMAIN_ERROR" ] && [ "$DOMAIN_ERROR" != "" ]; then
+            fail "Ошибка создания домена: $DOMAIN_ERROR"
+        fi
+        DOMAIN="${SUBDOMAIN}.autocheckin.afonin-lisa.ru"
+        ok "Домен создан: $DOMAIN"
+        info "DNS обновится через 1-2 минуты"
     fi
     save_cfg "domain" "$DOMAIN"
     save_cfg "public_ip" "$PUBLIC_IP"
