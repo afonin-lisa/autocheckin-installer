@@ -90,10 +90,12 @@ if [ "${CFG[checklist_done]:-}" != "done" ]; then
     header "Перед установкой"
     echo -e "${BOLD}Подготовьте эти данные ЗАРАНЕЕ:${NC}\n"
     echo -e "  ${BOLD}Обязательно:${NC}"
+    echo -e "  ${RED}0.${NC} ${BOLD}Порты 80 и 443${NC} — откройте в Security Group сервера!"
+    echo -e "     Cloud.ru: VM → Сеть → Security Groups → добавить TCP 80, 443"
+    echo -e "     ⚠️  Без этого HTTPS не заработает!"
     echo -e "  ${GREEN}1.${NC} LICENSE_KEY — получите на ${BOLD}billing.afonin-lisa.ru/signup${NC}"
     echo -e "  ${GREEN}2.${NC} Домен — например ${BOLD}checkin.вашдомен.ru${NC}"
-    echo -e "     Настройте DNS A-запись → IP этого сервера"
-    echo -e "     ⏰ DNS обновляется до 24 часов, сделайте заранее!"
+    echo -e "     Или мы создадим поддомен автоматически"
     echo -e "  ${GREEN}3.${NC} RealtyCalendar — логин и пароль от ${BOLD}realtycalendar.ru${NC}"
     echo -e "  ${GREEN}4.${NC} MAX Bot Token — создайте бота: ${BOLD}max.ru/botfather${NC}"
     echo ""
@@ -296,6 +298,65 @@ echo ""
 if ! confirm "Всё верно? Начинаю установку?"; then
     info "Чтобы изменить параметр — удалите его из $CONFIG_FILE и запустите снова"
     exit 0
+fi
+
+# ═══ Проверка портов ═══
+header "Проверка сетевых портов"
+PUBLIC_IP="${CFG[public_ip]:-$(curl -sf --connect-timeout 5 https://ifconfig.me 2>/dev/null)}"
+info "Проверяю доступность портов 80/443 извне для $PUBLIC_IP..."
+
+PORTS_JSON=$(curl -sf --connect-timeout 10 "https://portchecker.io/api/v1/query" -X POST \
+    -H "Content-Type: application/json" \
+    -d "{\"host\":\"${PUBLIC_IP}\",\"ports\":[80,443]}" 2>/dev/null || echo "")
+
+PORT80_OK=false
+PORT443_OK=false
+if [ -n "$PORTS_JSON" ]; then
+    PORT80_OK=$(echo "$PORTS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if any(c['port']==80 and c['status'] for c in d.get('check',[])) else 'false')" 2>/dev/null || echo "false")
+    PORT443_OK=$(echo "$PORTS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if any(c['port']==443 and c['status'] for c in d.get('check',[])) else 'false')" 2>/dev/null || echo "false")
+fi
+
+if [ "$PORT80_OK" = "true" ] && [ "$PORT443_OK" = "true" ]; then
+    ok "Порты 80 и 443 открыты"
+else
+    echo ""
+    echo -e "  ${RED}${BOLD}⚠️  ПОРТЫ ЗАКРЫТЫ!${NC}"
+    echo ""
+    [ "$PORT80_OK"  != "true" ] && echo -e "  ${RED}❌ Порт 80 (HTTP) — ЗАКРЫТ${NC}"
+    [ "$PORT443_OK" != "true" ] && echo -e "  ${RED}❌ Порт 443 (HTTPS) — ЗАКРЫТ${NC}"
+    echo ""
+    echo -e "  ${BOLD}Как открыть:${NC}"
+    echo ""
+    echo -e "  ${CYAN}Cloud.ru:${NC}"
+    echo -e "    1. Панель управления → Виртуальные машины → ваша VM"
+    echo -e "    2. Вкладка «Сеть» → Security Groups"
+    echo -e "    3. Нажмите на группу → «Добавить правило»"
+    echo -e "    4. Добавьте два правила:"
+    echo -e "       ${BOLD}TCP 80${NC}  входящий, источник ${BOLD}0.0.0.0/0${NC}"
+    echo -e "       ${BOLD}TCP 443${NC} входящий, источник ${BOLD}0.0.0.0/0${NC}"
+    echo -e "    5. Сохраните"
+    echo ""
+    echo -e "  ${CYAN}Другие хостинги:${NC}"
+    echo -e "    Найдите Firewall / Security Groups в панели управления"
+    echo -e "    и разрешите входящий TCP на порты 80 и 443."
+    echo ""
+
+    if confirm "Порты открыты? Проверить ещё раз?"; then
+        # Re-check
+        PORTS_JSON2=$(curl -sf --connect-timeout 10 "https://portchecker.io/api/v1/query" -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"host\":\"${PUBLIC_IP}\",\"ports\":[80,443]}" 2>/dev/null || echo "")
+        P80=$(echo "$PORTS_JSON2" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if any(c['port']==80 and c['status'] for c in d.get('check',[])) else 'false')" 2>/dev/null || echo "false")
+        P443=$(echo "$PORTS_JSON2" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if any(c['port']==443 and c['status'] for c in d.get('check',[])) else 'false')" 2>/dev/null || echo "false")
+        if [ "$P80" = "true" ] && [ "$P443" = "true" ]; then
+            ok "Порты открыты!"
+        else
+            warn "Порты всё ещё закрыты. Установка продолжится, но HTTPS не заработает."
+            warn "Откройте порты и перезапустите: docker compose -f /opt/autocheckin/docker-compose.yml restart caddy"
+        fi
+    else
+        warn "Продолжаю без открытых портов. HTTPS не будет работать до их открытия."
+    fi
 fi
 
 # ═══ Preflight ═══
