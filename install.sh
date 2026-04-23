@@ -436,6 +436,8 @@ DB_PASSWORD=${DB_PASSWORD}
 IMAGE_TAG=latest
 ENVFILE
 chmod 600 "$INSTALL_DIR/.env"
+# Clean up SKIP markers from web installer
+sed -i 's/=SKIP$/=/' "$INSTALL_DIR/.env"
 ok ".env создан"
 
 # ═══ Create docker-compose.yml ═══
