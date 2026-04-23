@@ -27,6 +27,11 @@ header() { echo -e "\n${BOLD}${CYAN}═══ $1 ═══${NC}\n"; }
 
 ask() {
     local prompt="$1" default="${2:-}"
+    # Non-interactive mode: return default without asking
+    if [ "${AUTOCHECKIN_NONINTERACTIVE:-}" = "1" ]; then
+        echo "${default}"
+        return
+    fi
     if [ -n "$default" ]; then
         echo -en "${CYAN}▸ ${prompt} [${default}]: ${NC}" >&2
     else
@@ -37,12 +42,21 @@ ask() {
 }
 
 ask_secret() {
+    # Non-interactive mode: return empty
+    if [ "${AUTOCHECKIN_NONINTERACTIVE:-}" = "1" ]; then
+        echo ""
+        return
+    fi
     echo -en "${CYAN}▸ $1: ${NC}" >&2
     read -rs REPLY; echo >&2
     echo "$REPLY"
 }
 
 confirm() {
+    # Non-interactive mode: always yes
+    if [ "${AUTOCHECKIN_NONINTERACTIVE:-}" = "1" ]; then
+        return 0
+    fi
     echo -en "${CYAN}▸ $1 [y/N]: ${NC}" >&2
     read -r REPLY
     [[ "$REPLY" =~ ^[Yy]$ ]]
