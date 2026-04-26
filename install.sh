@@ -69,7 +69,16 @@ mkdir -p "$INSTALL_DIR"
 # ═══ Self-bootstrap: download full installer ═══
 if [ ! -f "$INSTALLER_DIR/templates/docker-compose.yml" ]; then
     echo "Скачиваю установщик..."
-    apt-get update -qq && apt-get install -y -qq git curl > /dev/null 2>&1 || true
+    # Try existing apt mirror; on failure (typical for Cloud.ru with mirror.yandex.ru
+    # outbound-blocked), rewrite to archive.ubuntu.com which is reachable everywhere.
+    if ! timeout 30 apt-get update -qq -o Acquire::ForceIPv4=true >/dev/null 2>&1; then
+        echo "  Текущий apt-mirror недоступен, переключаемся на archive.ubuntu.com..."
+        cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%s) 2>/dev/null || true
+        sed -i 's|http://[a-zA-Z0-9.-]*\(/ubuntu\)|http://archive.ubuntu.com\1|g' /etc/apt/sources.list 2>/dev/null || true
+        sed -i 's|http://[a-zA-Z0-9.-]*\(/ubuntu\)|http://archive.ubuntu.com\1|g' /etc/apt/sources.list.d/*.list 2>/dev/null || true
+        apt-get update -qq -o Acquire::ForceIPv4=true >/dev/null 2>&1 || true
+    fi
+    apt-get install -y -qq -o Acquire::ForceIPv4=true git curl > /dev/null 2>&1 || true
     if [ -d "$INSTALLER_DIR/.git" ]; then
         cd "$INSTALLER_DIR" && git fetch origin 2>/dev/null && git reset --hard origin/master 2>/dev/null || true
     else
