@@ -12,6 +12,7 @@ set -uo pipefail
 INSTALL_DIR="/opt/autocheckin"
 ENV_FILE="$INSTALL_DIR/.env"
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
+NONI="${AUTOCHECKIN_NONINTERACTIVE:-0}"
 
 [ "$(id -u)" -eq 0 ] || { echo "Запустите от root: sudo $0"; exit 1; }
 [ -f "$ENV_FILE" ] || { echo "Не найден $ENV_FILE — autocheckin не установлен?"; exit 1; }
@@ -26,6 +27,7 @@ header() { echo -e "\n${BOLD}${CYAN}═══ $1 ═══${NC}\n"; }
 
 ask() {
     local prompt="$1" default="${2:-}"
+    if [ "$NONI" = "1" ]; then echo "${default}"; return; fi
     if [ -n "$default" ]; then
         echo -en "${CYAN}▸ ${prompt} [${default}]: ${NC}" >&2
     else
@@ -36,10 +38,22 @@ ask() {
 }
 
 ask_secret() {
+    if [ "$NONI" = "1" ]; then echo ""; return; fi
     echo -en "${CYAN}▸ $1: ${NC}" >&2
     read -rs REPLY
     echo >&2
     echo "$REPLY"
+}
+
+# Non-interactive helper: in NONI mode, value comes from env var $env_name.
+# Usage: env_or_ask AC_TRIPSTER_TOKEN "Tripster Token" secret
+env_or_ask() {
+    local env_name="$1" prompt="$2" mode="${3:-text}"
+    if [ "$NONI" = "1" ]; then
+        eval 'echo "${'"$env_name"':-}"'
+        return
+    fi
+    if [ "$mode" = "secret" ]; then ask_secret "$prompt"; else ask "$prompt"; fi
 }
 
 # Set environment variable in .env (idempotent: replaces if exists, adds if not)
@@ -286,6 +300,29 @@ run_one() {
     esac
     restart_app
 }
+
+# Non-interactive mode (used by hub-billing → SSH):
+# `AUTOCHECKIN_NONINTERACTIVE=1 AC_TRIPSTER_TOKEN=xxx ... configure.sh tripster`
+# In this mode we simply persist every AC_* env var passed by the caller
+# into .env (hub already validated which keys belong to the requested integration).
+if [ "$NONI" = "1" ]; then
+    changed=0
+    while IFS= read -r line; do
+        # Extract var name (everything before the first '=')
+        var="${line%%=*}"
+        # Get its actual value via indirect expansion
+        val="${!var}"
+        set_env "$var" "$val"
+        changed=$((changed+1))
+    done < <(env | awk -F= '/^AC_[A-Z_0-9]+=/ {print $1"="}')
+    if [ "$changed" -gt 0 ]; then
+        echo "Updated $changed AC_* variables in $ENV_FILE"
+        restart_app
+    else
+        echo "No AC_* env vars supplied"
+    fi
+    exit 0
+fi
 
 # CLI mode: configure.sh <name>
 if [ "$#" -gt 0 ]; then
