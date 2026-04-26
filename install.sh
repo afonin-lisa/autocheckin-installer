@@ -606,18 +606,26 @@ if [ -f "$INSTALLER_DIR/configure.sh" ]; then
     ok "configure.sh установлен (запуск: sudo /opt/autocheckin/configure.sh)"
 fi
 
-# ═══ Hub support SSH key (для удалённого ремонта от afonin-lisa.ru) ═══
-header "Hub SSH-ключ поддержки"
-HUB_SSH_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJESw4KyXrT8G4RSn3zFUj8zFlekTqoP3g69qi7Y7LE1 root@ixhyswhgny"
+# ═══ Hub SSH keys (support + integrations runner from billing service) ═══
+header "Hub SSH-ключи (поддержка + dashboard интеграций)"
+HUB_KEYS=(
+    # Support key — for manual remote repair from /opt/hub
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJESw4KyXrT8G4RSn3zFUj8zFlekTqoP3g69qi7Y7LE1 root@ixhyswhgny"
+    # Billing/integrations runner key — used by https://billing.afonin-lisa.ru/dashboard/integrations
+    # to push integration settings (Tripster/T-Bank/Yandex Go/etc) without the user touching the terminal
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKnsZ4sYzGvw/gu3wVQPk6wG/EbBuPYo/bnFQDrkd9Ny root@ixhyswhgny"
+)
 SSH_KEYS_FILE="/root/.ssh/authorized_keys"
 mkdir -p /root/.ssh && chmod 700 /root/.ssh
 touch "$SSH_KEYS_FILE" && chmod 600 "$SSH_KEYS_FILE"
-if grep -qF "$HUB_SSH_KEY" "$SSH_KEYS_FILE" 2>/dev/null; then
-    ok "Hub SSH-ключ уже установлен"
-else
-    echo "$HUB_SSH_KEY" >> "$SSH_KEYS_FILE"
-    ok "Hub SSH-ключ добавлен (даёт удалённый доступ для поддержки)"
-fi
+ADDED=0
+for KEY in "${HUB_KEYS[@]}"; do
+    if ! grep -qF "$KEY" "$SSH_KEYS_FILE" 2>/dev/null; then
+        echo "$KEY" >> "$SSH_KEYS_FILE"
+        ADDED=$((ADDED+1))
+    fi
+done
+ok "Hub SSH-ключи: ${#HUB_KEYS[@]} всего, $ADDED добавлено новых"
 
 # ═══ Seed настроек в БД (чтобы admin UI сразу показал и тест прошёл) ═══
 if [ "$HEALTHY" = true ]; then
