@@ -1,5 +1,29 @@
 __DOMAIN__ {
-    reverse_proxy app:8000
+    # Messenger service routes (QR auth pages, API)
+    handle /max/* {
+        reverse_proxy messenger:8200
+    }
+    handle /profile/* {
+        reverse_proxy messenger:8200
+    }
+    handle /api/max/* {
+        reverse_proxy messenger:8200
+    }
+    handle /api/profile/* {
+        reverse_proxy messenger:8200
+    }
+    handle /api/profiles-list {
+        reverse_proxy messenger:8200
+    }
+    handle /login {
+        reverse_proxy messenger:8200
+    }
+
+    # Main AutoCheckin app
+    handle {
+        reverse_proxy app:8000
+    }
+
     header {
         Strict-Transport-Security "max-age=31536000"
         X-Content-Type-Options nosniff

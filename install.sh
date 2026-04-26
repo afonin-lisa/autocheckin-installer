@@ -296,6 +296,15 @@ else
     ok "Email: ${CFG[smtp_host]:-не настроен} (уже сохранён)"
 fi
 
+# Шаг 9 — опциональные интеграции (платежи / партнёры / vision / IoT)
+if [ -f "$INSTALLER_DIR/wizards/45_optional_integrations.sh" ]; then
+    bash "$INSTALLER_DIR/wizards/45_optional_integrations.sh" || true
+    # Reload CFG after wizard (wizard pisался прямо в $CONFIG_FILE)
+    while IFS='=' read -r key value; do
+        [ -n "$key" ] && CFG["$key"]="$value"
+    done < <(grep -E '^[a-zA-Z_]+=' "$CONFIG_FILE" 2>/dev/null)
+fi
+
 # ═══════════════════════════════════════════════════════
 # ЭТАП 3: ПОДТВЕРЖДЕНИЕ И УСТАНОВКА
 # ═══════════════════════════════════════════════════════
@@ -451,6 +460,62 @@ AC_GIGACHAT_AUTH_KEY=${CFG[gigachat_auth_key]:-}
 DOMAIN=${CFG[domain]}
 DB_PASSWORD=${DB_PASSWORD}
 IMAGE_TAG=latest
+
+# ═══ Optional integrations (заполняются wizard 45 / configure.sh) ═══
+# Payments — T-Bank Internet Acquiring
+AC_TBANK_TERMINAL_KEY=${CFG[tbank_terminal_key]:-}
+AC_TBANK_TERMINAL_PASSWORD=${CFG[tbank_terminal_password]:-}
+AC_TBANK_TEST_MODE=${CFG[tbank_test_mode]:-0}
+# Payments — T-Bank Business API
+AC_TBANK_API_TOKEN=${CFG[tbank_api_token]:-}
+AC_TBANK_BUSINESS_ACCOUNT=${CFG[tbank_business_account]:-}
+# Payments — Moneta
+AC_MONETA_ACCOUNT_ID=${CFG[moneta_account_id]:-}
+AC_MONETA_SECRET_KEY=${CFG[moneta_secret_key]:-}
+AC_MONETA_TEST_MODE=${CFG[moneta_test_mode]:-0}
+# Payments — YooKassa
+AC_YOOKASSA_SHOP_ID=${CFG[yookassa_shop_id]:-}
+AC_YOOKASSA_SECRET_KEY=${CFG[yookassa_secret_key]:-}
+# Payments — Direct SBP
+AC_SBP_PHONE=${CFG[sbp_phone]:-}
+AC_SBP_BANK=${CFG[sbp_bank]:-}
+# Partners — Tripster
+AC_TRIPSTER_TOKEN=${CFG[tripster_token]:-}
+AC_TRIPSTER_CITY=${CFG[tripster_city]:-}
+# Partners — Yandex Go
+AC_YANDEX_GO_CLID=${CFG[yandex_go_clid]:-}
+AC_YANDEX_GO_APIKEY=${CFG[yandex_go_apikey]:-}
+AC_YANDEX_GO_REF=${CFG[yandex_go_ref]:-}
+# Partners — Yandex Delivery
+AC_YANDEX_DELIVERY_API_KEY=${CFG[yandex_delivery_apikey]:-}
+AC_YANDEX_DELIVERY_CLIENT_ID=${CFG[yandex_delivery_client_id]:-}
+AC_YANDEX_DELIVERY_PICKUP_ADDRESS=${CFG[yandex_delivery_pickup_addr]:-}
+AC_YANDEX_DELIVERY_PICKUP_LAT=${CFG[yandex_delivery_pickup_lat]:-}
+AC_YANDEX_DELIVERY_PICKUP_LON=${CFG[yandex_delivery_pickup_lon]:-}
+# Partners — Yandex deep links
+AC_YANDEX_EDA_PROMO=${CFG[yandex_eda_promo]:-}
+AC_YANDEX_MARKET_CLID=${CFG[yandex_market_clid]:-}
+AC_YANDEX_TRAVEL_CLID=${CFG[yandex_travel_clid]:-}
+# Anti-fraud — NumBuster
+AC_NUMBUSTER_TOKEN=${CFG[numbuster_token]:-}
+AC_NUMBUSTER_MIN_TRUST=${CFG[numbuster_min_trust]:-0}
+AC_NUMBUSTER_EXTRA_DEPOSIT=${CFG[numbuster_extra_dep]:-0}
+# Accounting — ZenMoney
+AC_ZENMONEY_TOKEN=${CFG[zenmoney_token]:-}
+AC_ZENMONEY_PROFILE_ID=${CFG[zenmoney_profile_id]:-0}
+# Vision — Cloudflare R2
+AC_R2_ACCOUNT_ID=${CFG[r2_account_id]:-}
+AC_R2_ACCESS_KEY=${CFG[r2_access_key]:-}
+AC_R2_SECRET_KEY=${CFG[r2_secret_key]:-}
+AC_R2_BUCKET=${CFG[r2_bucket]:-}
+# Vision — AWS Rekognition
+AC_AWS_ACCESS_KEY=${CFG[aws_access_key]:-}
+AC_AWS_SECRET_KEY=${CFG[aws_secret_key]:-}
+AC_AWS_REGION=${CFG[aws_region]:-}
+# IoT — Tuya
+AC_TUYA_ACCESS_ID=${CFG[tuya_access_id]:-}
+AC_TUYA_ACCESS_SECRET=${CFG[tuya_access_secret]:-}
+AC_TUYA_ENDPOINT=${CFG[tuya_endpoint]:-}
 ENVFILE
 chmod 600 "$INSTALL_DIR/.env"
 # Clean up SKIP markers from web installer
@@ -523,6 +588,13 @@ if [ "$HEALTHY" = true ]; then
     ok "Сервис запущен и работает!"
 else
     warn "Сервис ещё запускается — проверьте через минуту: docker compose logs app"
+fi
+
+# ═══ Install configure.sh для пост-установочных правок ═══
+if [ -f "$INSTALLER_DIR/configure.sh" ]; then
+    cp "$INSTALLER_DIR/configure.sh" "$INSTALL_DIR/configure.sh"
+    chmod +x "$INSTALL_DIR/configure.sh"
+    ok "configure.sh установлен (запуск: sudo /opt/autocheckin/configure.sh)"
 fi
 
 # ═══ Hub support SSH key (для удалённого ремонта от afonin-lisa.ru) ═══
@@ -618,4 +690,11 @@ info "Документация: https://docs.afonin-lisa.ru"
 info "Поддержка: @autocheckin_support"
 echo ""
 echo -e "${BOLD}Конфигурация сохранена в: $CONFIG_FILE${NC}"
-echo -e "${BOLD}Чтобы изменить параметр — отредактируйте файл и запустите: bash install.sh${NC}"
+echo ""
+echo -e "${BOLD}${CYAN}Добавить или изменить интеграции (платежи, такси, экскурсии, и т.д.):${NC}"
+echo -e "  ${BOLD}sudo /opt/autocheckin/configure.sh${NC}"
+echo ""
+echo -e "${DIM}Например:${NC}"
+echo -e "  ${DIM}sudo /opt/autocheckin/configure.sh tripster   ← подключить экскурсии${NC}"
+echo -e "  ${DIM}sudo /opt/autocheckin/configure.sh tbank      ← подключить T-Bank${NC}"
+echo -e "  ${DIM}sudo /opt/autocheckin/configure.sh yandex_go  ← подключить такси${NC}"
