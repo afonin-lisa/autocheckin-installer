@@ -140,6 +140,21 @@ cfg_tg() {
     ok "TG бот обновлён"
 }
 
+# Probe Yandex AI Studio with a fake folder to extract the real one from the
+# error message. AI Studio doesn't show folder_id, so this saves clients hassle.
+discover_yandex_folder_id() {
+    local api_key="$1"
+    [ -z "$api_key" ] && return 1
+    local resp
+    resp=$(curl -sS --max-time 10 -X POST \
+        "https://llm.api.cloud.yandex.net/foundationModels/v1/completion" \
+        -H "Authorization: Api-Key $api_key" \
+        -H "Content-Type: application/json" \
+        -d '{"modelUri":"gpt://b1g000000000000000000/yandexgpt-lite/latest","completionOptions":{"maxTokens":1},"messages":[{"role":"user","text":"x"}]}' 2>/dev/null)
+    # Extract folder ID from "service account folder ID 'b1ginvn...'" pattern
+    echo "$resp" | grep -oE "service account folder ID '[a-z0-9]{20}'" | grep -oE "b[0-9a-z]{19}" | head -1
+}
+
 cfg_ai() {
     header "AI провайдер"
     local prov
@@ -158,9 +173,26 @@ cfg_ai() {
                 model="${AC_YANDEX_GPT_MODEL:-yandexgpt-lite}"
             else
                 api_key=$(ask_secret 'YANDEX_API_KEY (AQVN…)')
-                folder_id=$(ask 'YANDEX_FOLDER_ID (b1g…)' "$(get_env AC_YANDEX_FOLDER_ID)")
+                # folder_id опционален — найдём сами через probe-trick если не задан
+                folder_id=$(ask 'YANDEX_FOLDER_ID (Enter — найду автоматически)' "$(get_env AC_YANDEX_FOLDER_ID)")
                 model=$(ask 'Модель (yandexgpt-lite / yandexgpt)' "$(get_env AC_YANDEX_GPT_MODEL || echo 'yandexgpt-lite')")
             fi
+            # Trim spaces (AI Studio copy-paste может включать пробелы)
+            api_key=$(echo -n "$api_key" | tr -d '[:space:]')
+            folder_id=$(echo -n "$folder_id" | tr -d '[:space:]')
+            model=$(echo -n "$model" | tr -d '[:space:]')
+
+            # Auto-discover folder_id если не задан
+            if [ -z "$folder_id" ] && [ -n "$api_key" ]; then
+                info "folder_id не задан — ищу автоматически через Yandex API…"
+                folder_id=$(discover_yandex_folder_id "$api_key")
+                if [ -n "$folder_id" ]; then
+                    ok "folder_id найден: $folder_id"
+                else
+                    warn "Не удалось найти folder_id. Возможно API key неверный."
+                fi
+            fi
+
             set_env AC_YANDEX_API_KEY   "$api_key"
             set_env AC_YANDEX_FOLDER_ID "$folder_id"
             set_env AC_YANDEX_GPT_MODEL "$model"
@@ -176,6 +208,7 @@ ai_model=$model"
             else
                 giga_key=$(ask_secret 'GIGACHAT_AUTH_KEY (base64)')
             fi
+            giga_key=$(echo -n "$giga_key" | tr -d '[:space:]')
             set_env AC_GIGACHAT_AUTH_KEY "$giga_key"
             seed_db_settings "ai_provider=gigachat
 gigachat_auth_key=$giga_key
