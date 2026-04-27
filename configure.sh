@@ -79,12 +79,44 @@ is_set() {
 }
 
 restart_app() {
-    info "Перезапуск AutoCheckin для применения .env…"
-    if cd "$INSTALL_DIR" 2>/dev/null && docker compose restart app >/dev/null 2>&1; then
-        ok "AutoCheckin перезапущен"
+    info "Применяю изменения (force-recreate чтобы env_file перечитался)…"
+    if cd "$INSTALL_DIR" 2>/dev/null && docker compose up -d --force-recreate app >/dev/null 2>&1; then
+        ok "AutoCheckin пересоздан с новым .env"
     else
-        warn "Не удалось перезапустить через docker compose. Перезапустите вручную: docker restart autocheckin-app"
+        # Fallback to restart if force-recreate fails
+        if cd "$INSTALL_DIR" 2>/dev/null && docker compose restart app >/dev/null 2>&1; then
+            ok "AutoCheckin перезапущен (env_file может быть не подхвачен — попробуйте 'docker compose up -d --force-recreate app')"
+        else
+            warn "Не удалось перезапустить. Вручную: cd /opt/autocheckin && docker compose up -d --force-recreate app"
+        fi
     fi
+}
+
+# Push key/value into the in-DB Settings table (admin_web reads from DB, not .env)
+seed_db_settings() {
+    local pairs="$1"  # Multi-line: "key=value\nkey2=value2"
+    local app_container
+    app_container=$(docker ps --filter 'name=autocheckin-app' --format '{{.Names}}' | head -1)
+    [ -z "$app_container" ] && { warn "autocheckin-app не запущен — БД-сеттинги пропущены"; return; }
+
+    docker exec -i "$app_container" python3 -c "
+import asyncio, sys
+sys.path.insert(0, '/app')
+from app.modules.admin_web.settings_repo import SettingsRepository
+from app.core.db import get_db
+
+async def seed():
+    pairs = [l.split('=', 1) for l in '''$pairs'''.strip().split('\n') if '=' in l]
+    async for db in get_db():
+        r = SettingsRepository(db)
+        for k, v in pairs:
+            await r.set(k.strip(), v.strip(), is_secret=k.strip().endswith(('_key','_token','_password','_secret')))
+        await db.commit()
+        print(f'Seeded {len(pairs)} settings')
+        break
+
+asyncio.run(seed())
+" 2>&1 | tail -2
 }
 
 # ───────────────────────── Конфигураторы ─────────────────────────
@@ -111,19 +143,46 @@ cfg_tg() {
 cfg_ai() {
     header "AI провайдер"
     local prov
-    prov=$(ask 'Провайдер (yandex_gpt / gigachat)' "$(get_env AC_AI_PRIMARY)")
+    if [ "$NONI" = "1" ]; then
+        prov="${AC_AI_PRIMARY:-}"
+    else
+        prov=$(ask 'Провайдер (yandex_gpt / gigachat)' "$(get_env AC_AI_PRIMARY)")
+    fi
     set_env AC_AI_PRIMARY "$prov"
+    local api_key="" folder_id="" model="yandexgpt-lite" giga_key=""
     case "$prov" in
         yandex_gpt)
-            set_env AC_YANDEX_API_KEY    "$(ask_secret 'YANDEX_API_KEY (AQVN…)')"
-            set_env AC_YANDEX_FOLDER_ID  "$(ask        'YANDEX_FOLDER_ID (b1g…)' "$(get_env AC_YANDEX_FOLDER_ID)")"
-            set_env AC_YANDEX_GPT_MODEL  "$(ask        'Модель (yandexgpt-lite / yandexgpt)' "$(get_env AC_YANDEX_GPT_MODEL || echo 'yandexgpt-lite')")"
+            if [ "$NONI" = "1" ]; then
+                api_key="${AC_YANDEX_API_KEY:-}"
+                folder_id="${AC_YANDEX_FOLDER_ID:-}"
+                model="${AC_YANDEX_GPT_MODEL:-yandexgpt-lite}"
+            else
+                api_key=$(ask_secret 'YANDEX_API_KEY (AQVN…)')
+                folder_id=$(ask 'YANDEX_FOLDER_ID (b1g…)' "$(get_env AC_YANDEX_FOLDER_ID)")
+                model=$(ask 'Модель (yandexgpt-lite / yandexgpt)' "$(get_env AC_YANDEX_GPT_MODEL || echo 'yandexgpt-lite')")
+            fi
+            set_env AC_YANDEX_API_KEY   "$api_key"
+            set_env AC_YANDEX_FOLDER_ID "$folder_id"
+            set_env AC_YANDEX_GPT_MODEL "$model"
+            # Also seed in-DB settings — admin_web reads provider/keys from DB, not .env
+            seed_db_settings "ai_provider=yandex_gpt
+ai_api_key=$api_key
+ai_folder_id=$folder_id
+ai_model=$model"
             ;;
         gigachat)
-            set_env AC_GIGACHAT_AUTH_KEY "$(ask_secret 'GIGACHAT_AUTH_KEY (base64)')"
+            if [ "$NONI" = "1" ]; then
+                giga_key="${AC_GIGACHAT_AUTH_KEY:-}"
+            else
+                giga_key=$(ask_secret 'GIGACHAT_AUTH_KEY (base64)')
+            fi
+            set_env AC_GIGACHAT_AUTH_KEY "$giga_key"
+            seed_db_settings "ai_provider=gigachat
+gigachat_auth_key=$giga_key
+ai_model=GigaChat"
             ;;
     esac
-    ok "AI обновлён"
+    ok "AI обновлён (.env + БД settings)"
 }
 
 cfg_tbank() {
